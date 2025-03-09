@@ -19,7 +19,11 @@ typedef struct {
 } User;
 
 // Function to parse a CSV line and store it in a User struct
-// Will be implemented in a future commit
+int parse_csv_line(const char *line, User *user) {
+    return sscanf(line, "%d,%49[^,],%49[^,],%99[^,],%49[^\n]", 
+                 &user->user_id, user->first_name, user->last_name, 
+                 user->email, user->city);
+}
 
 int main(int argc, char *argv[]) {
     if (argc != 3) {
@@ -64,11 +68,47 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("Basic client structure initialized\n");
-    printf("CSV file and log file opened successfully\n");
-    printf("Socket created but not yet connected\n");
+    printf("CSV parsing functionality added\n");
+    
+    // Test CSV parsing (without server connection)
+    char line[MAX_LINE_LENGTH];
+    // Skip header if present
+    if (fgets(line, MAX_LINE_LENGTH, csv_file) == NULL) {
+        printf("CSV file is empty\n");
+        close(sock_fd);
+        fclose(csv_file);
+        fclose(log_file);
+        return 1;
+    }
 
-    // Server communication will be implemented in future commits
+    // Check if first line looks like header (does not start with a number)
+    if (line[0] < '0' || line[0] > '9') {
+        printf("Skipping header line: %s", line);
+    } else {
+        // Reset file pointer to beginning if no header
+        rewind(csv_file);
+    }
+
+    // Process each line
+    while (fgets(line, MAX_LINE_LENGTH, csv_file) != NULL) {
+        // Remove newline character if present
+        size_t len = strlen(line);
+        if (len > 0 && line[len-1] == '\n') {
+            line[len-1] = '\0';
+        }
+
+        // Parse line
+        User user;
+        if (parse_csv_line(line, &user) != 5) {
+            fprintf(stderr, "Error parsing line: %s\n", line);
+            continue;
+        }
+
+        printf("Parsed user: %d, %s %s, %s, %s\n", 
+               user.user_id, user.first_name, user.last_name, user.email, user.city);
+        
+        // Server communication will be implemented in future commits
+    }
 
     // Clean up
     close(sock_fd);
