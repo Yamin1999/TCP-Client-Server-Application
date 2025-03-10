@@ -20,9 +20,42 @@ typedef struct {
 
 // Function to parse a CSV line and store it in a User struct
 int parse_csv_line(const char *line, User *user) {
-    return sscanf(line, "%d,%49[^,],%49[^,],%99[^,],%49[^\n]", 
-                 &user->user_id, user->first_name, user->last_name, 
-                 user->email, user->city);
+    char copy[MAX_LINE_LENGTH];
+    strcpy(copy, line);  // Make a copy of the line to tokenize
+    
+    char *token;
+    char *saveptr;  // For strtok_r to be thread-safe
+    
+    // Get user_id
+    token = strtok_r(copy, ",", &saveptr);
+    if (token == NULL) return 0;
+    user->user_id = atoi(token);
+    
+    // Get first_name
+    token = strtok_r(NULL, ",", &saveptr);
+    if (token == NULL) return 0;
+    strncpy(user->first_name, token, sizeof(user->first_name) - 1);
+    user->first_name[sizeof(user->first_name) - 1] = '\0';  // Ensure null termination
+    
+    // Get last_name
+    token = strtok_r(NULL, ",", &saveptr);
+    if (token == NULL) return 0;
+    strncpy(user->last_name, token, sizeof(user->last_name) - 1);
+    user->last_name[sizeof(user->last_name) - 1] = '\0';
+    
+    // Get email
+    token = strtok_r(NULL, ",", &saveptr);
+    if (token == NULL) return 0;
+    strncpy(user->email, token, sizeof(user->email) - 1);
+    user->email[sizeof(user->email) - 1] = '\0';
+    
+    // Get city
+    token = strtok_r(NULL, "\r\n", &saveptr);  // Handle different line endings
+    if (token == NULL) return 0;
+    strncpy(user->city, token, sizeof(user->city) - 1);
+    user->city[sizeof(user->city) - 1] = '\0';
+    
+    return 5;  // Success - all 5 fields parsed
 }
 
 int main(int argc, char *argv[]) {
