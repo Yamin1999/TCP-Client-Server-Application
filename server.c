@@ -5,9 +5,10 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-#include <signal.h>
-#include <errno.h>
 #include <mysql/mysql.h>
+#include <signal.h>
+#include <sys/select.h>
+#include <errno.h>
 
 #define SERVER_PORT 8080
 #define MAX_PENDING 10
@@ -71,6 +72,36 @@ MYSQL* init_database() {
     return conn;
 }
 
+// Store user in database
+int store_user(MYSQL *conn, User *user) {
+    char query[512];
+    
+    // Escape strings to prevent SQL injection
+    char first_name_esc[100], last_name_esc[100], email_esc[200], city_esc[100];
+    
+    mysql_real_escape_string(conn, first_name_esc, user->first_name, strlen(user->first_name));
+    mysql_real_escape_string(conn, last_name_esc, user->last_name, strlen(user->last_name));
+    mysql_real_escape_string(conn, email_esc, user->email, strlen(user->email));
+    mysql_real_escape_string(conn, city_esc, user->city, strlen(user->city));
+    
+    // Format query - using INSERT ... ON DUPLICATE KEY UPDATE for handling duplicates
+    snprintf(query, sizeof(query), 
+            "INSERT INTO users (user_id, first_name, last_name, email, city) "
+            "VALUES (%d, '%s', '%s', '%s', '%s') "
+            "ON DUPLICATE KEY UPDATE "
+            "first_name='%s', last_name='%s', email='%s', city='%s'",
+            user->user_id, first_name_esc, last_name_esc, email_esc, city_esc,
+            first_name_esc, last_name_esc, email_esc, city_esc);
+    
+    // Execute query
+    if (mysql_query(conn, query)) {
+        fprintf(stderr, "Insert failed: %s\n", mysql_error(conn));
+        return 0;
+    }
+    
+    return 1;
+}
+
 // Initialize socket and start listening
 int init_server() {
     int server_fd;
@@ -114,6 +145,45 @@ int init_server() {
     return server_fd;
 }
 
+// Handle client connection
+void handle_client(int client_fd, MYSQL *conn) {
+    User user;
+    
+    while (running) {
+        // Receive user data
+        ssize_t bytes_received = recv(client_fd, &user, sizeof(User), 0);
+        if (bytes_received <= 0) {
+            // Client disconnected or error
+            if (bytes_received < 0) {
+                perror("Receive failed");
+            }
+            break;
+        }
+        
+        printf("Received user: ID=%d, Name=%s %s, Email=%s, City=%s\n", 
+               user.user_id, user.first_name, user.last_name, user.email, user.city);
+        
+        // Store user in database
+        int success = store_user(conn, &user);
+        
+        // Prepare acknowledgment
+        char ack[256];
+        if (success) {
+            snprintf(ack, sizeof(ack), "User ID %d processed successfully", user.user_id);
+        } else {
+            snprintf(ack, sizeof(ack), "Failed to process User ID %d", user.user_id);
+        }
+        
+        // Send acknowledgment
+        if (send(client_fd, ack, strlen(ack), 0) < 0) {
+            perror("Send failed");
+            break;
+        }
+    }
+    
+    close(client_fd);
+}
+
 int main() {
     // Set up signal handlers
     signal(SIGINT, handle_signal);
@@ -132,13 +202,46 @@ int main() {
         return 1;
     }
     
-    printf("Server initialized successfully with MySQL connectivity\n");
-    printf("User data storage will be implemented in future commits\n");
+    printf("Server initialized successfully\n");
     
-    // Basic server loop
+    // Main server loop
     while (running) {
-        printf("Server running... Press Ctrl+C to exit\n");
-        sleep(5);  // Just to prevent high CPU usage in this skeleton code
+        struct sockaddr_in client_addr;
+        socklen_t client_len = sizeof(client_addr);
+        
+        // Accept client connection (with timeout to check running flag)
+        fd_set readfds;
+        FD_ZERO(&readfds);
+        FD_SET(server_fd, &readfds);
+        
+        struct timeval timeout;
+        timeout.tv_sec = 1;  // 1 second timeout
+        timeout.tv_usec = 0;
+        
+        int activity = select(server_fd + 1, &readfds, NULL, NULL, &timeout);
+        
+        if (activity < 0 && errno != EINTR) {
+            perror("Select error");
+            break;
+        }
+        
+        if (!running) break;
+        
+        if (activity > 0) {
+            int client_fd = accept(server_fd, (struct sockaddr *)&client_addr, &client_len);
+            if (client_fd < 0) {
+                perror("Accept failed");
+                continue;
+            }
+            
+            char client_ip[INET_ADDRSTRLEN];
+            inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, INET_ADDRSTRLEN);
+            printf("New connection from %s:%d\n", client_ip, ntohs(client_addr.sin_port));
+            
+            // Handle client in the same thread for simplicity
+            // For production, you would want to use threads or a process pool
+            handle_client(client_fd, conn);
+        }
     }
     
     // Cleanup

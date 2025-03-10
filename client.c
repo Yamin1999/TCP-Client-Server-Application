@@ -101,9 +101,18 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    printf("CSV parsing functionality added\n");
+    // Connect to server
+    if (connect(sock_fd, (struct sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("Connection failed");
+        close(sock_fd);
+        fclose(csv_file);
+        fclose(log_file);
+        return 1;
+    }
+
+    printf("Connected to server at %s:%d\n", SERVER_IP, SERVER_PORT);
     
-    // Test CSV parsing (without server connection)
+    // Read CSV file line by line
     char line[MAX_LINE_LENGTH];
     // Skip header if present
     if (fgets(line, MAX_LINE_LENGTH, csv_file) == NULL) {
@@ -116,7 +125,7 @@ int main(int argc, char *argv[]) {
 
     // Check if first line looks like header (does not start with a number)
     if (line[0] < '0' || line[0] > '9') {
-        printf("Skipping header line: %s", line);
+        printf("Skipping header line\n");
     } else {
         // Reset file pointer to beginning if no header
         rewind(csv_file);
@@ -137,16 +146,38 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        printf("Parsed user: %d, %s %s, %s, %s\n", 
+        printf("Sending user: %d, %s %s, %s, %s\n", 
                user.user_id, user.first_name, user.last_name, user.email, user.city);
+
+        // Send user data to server
+        if (send(sock_fd, &user, sizeof(User), 0) < 0) {
+            perror("Send failed");
+            break;
+        }
+
+        // Receive acknowledgment
+        char ack[256];
+        ssize_t bytes_received = recv(sock_fd, ack, sizeof(ack) - 1, 0);
+        if (bytes_received <= 0) {
+            perror("Receive failed");
+            break;
+        }
+
+        // Null-terminate the acknowledgment
+        ack[bytes_received] = '\0';
+        printf("Received acknowledgment: %s\n", ack);
         
-        // Server communication will be implemented in future commits
+        // Log functionality will be added in a future commit
+
+        // Small delay between requests
+        usleep(100000);  // 100ms delay
     }
 
     // Clean up
     close(sock_fd);
     fclose(csv_file);
     fclose(log_file);
+    printf("Client execution completed\n");
     
     return 0;
 }
