@@ -1,0 +1,51 @@
+version: '3'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: user_db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: new_password
+      MYSQL_DATABASE: user_db
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./scripts/setup-db.sql:/docker-entrypoint-initdb.d/setup.sql
+    ports:
+      - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  server:
+    build:
+      context: .
+      dockerfile: docker/server.Dockerfile
+    container_name: user_server
+    restart: always
+    depends_on:
+      mysql:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      DB_HOST: mysql
+      DB_USER: root
+      DB_PASS: new_password
+      DB_NAME: user_db
+
+  client:
+    build:
+      context: .
+      dockerfile: docker/client.Dockerfile
+    container_name: user_client
+    volumes:
+      - ./scripts/test-data.csv:/app/data.csv
+      - ./logs:/app/logs
+    depends_on:
+      - server
+
+volumes:
+  mysql_data:

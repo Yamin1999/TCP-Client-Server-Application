@@ -9,17 +9,9 @@
 #include <signal.h>
 #include <sys/select.h>
 #include <errno.h>
+#include "../../include/common.h"
 
-#define SERVER_PORT 8080
 #define MAX_PENDING 10
-
-typedef struct {
-    int user_id;
-    char first_name[50];
-    char last_name[50];
-    char email[100];
-    char city[50];
-} User;
 
 // MySQL Database connection info
 #define DB_HOST "localhost"

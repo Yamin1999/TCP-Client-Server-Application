@@ -1,16 +1,27 @@
 CC = gcc
-CFLAGS = -Wall -Wextra
-MYSQL_FLAGS = $(shell mysql_config --cflags --libs)
+CFLAGS = -Wall -Wextra -I./include
+LDFLAGS_SERVER = -lmysqlclient
+BUILD_DIR = build
+SRC_DIR = src
 
-all: client server
+.PHONY: all clean server client
 
-client: client.c
-	$(CC) $(CFLAGS) -o client client.c
+all: server client
 
-server: server.c
-	$(CC) $(CFLAGS) -o server server.c $(MYSQL_FLAGS)
+# Server build
+server: $(BUILD_DIR)/server
 
+$(BUILD_DIR)/server: $(SRC_DIR)/server/server.c include/common.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS_SERVER)
+
+# Client build
+client: $(BUILD_DIR)/client
+
+$(BUILD_DIR)/client: $(SRC_DIR)/client/client.c include/common.h
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $<
+
+# Clean build artifacts
 clean:
-	rm -f client server
-
-.PHONY: all clean
+	rm -rf $(BUILD_DIR)

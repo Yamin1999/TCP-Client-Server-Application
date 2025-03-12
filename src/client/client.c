@@ -5,57 +5,20 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
-
-#define MAX_LINE_LENGTH 1024
-#define SERVER_IP "127.0.0.1"
-#define SERVER_PORT 8080
-
-typedef struct {
-    int user_id;
-    char first_name[50];
-    char last_name[50];
-    char email[100];
-    char city[50];
-} User;
+#include "../../include/common.h"
 
 // Function to parse a CSV line and store it in a User struct
 int parse_csv_line(const char *line, User *user) {
-    char copy[MAX_LINE_LENGTH];
-    strcpy(copy, line);  // Make a copy of the line to tokenize
-    
-    char *token;
-    char *saveptr;  // For strtok_r to be thread-safe
-    
-    // Get user_id
-    token = strtok_r(copy, ",", &saveptr);
-    if (token == NULL) return 0;
-    user->user_id = atoi(token);
-    
-    // Get first_name
-    token = strtok_r(NULL, ",", &saveptr);
-    if (token == NULL) return 0;
-    strncpy(user->first_name, token, sizeof(user->first_name) - 1);
-    user->first_name[sizeof(user->first_name) - 1] = '\0';  // Ensure null termination
-    
-    // Get last_name
-    token = strtok_r(NULL, ",", &saveptr);
-    if (token == NULL) return 0;
-    strncpy(user->last_name, token, sizeof(user->last_name) - 1);
-    user->last_name[sizeof(user->last_name) - 1] = '\0';
-    
-    // Get email
-    token = strtok_r(NULL, ",", &saveptr);
-    if (token == NULL) return 0;
-    strncpy(user->email, token, sizeof(user->email) - 1);
-    user->email[sizeof(user->email) - 1] = '\0';
-    
-    // Get city
-    token = strtok_r(NULL, "\r\n", &saveptr);  // Handle different line endings
-    if (token == NULL) return 0;
-    strncpy(user->city, token, sizeof(user->city) - 1);
-    user->city[sizeof(user->city) - 1] = '\0';
-    
-    return 5;  // Success - all 5 fields parsed
+    return sscanf(line, "%d,%49[^,],%49[^,],%99[^,],%49[^\n]", 
+                 &user->user_id, user->first_name, user->last_name, 
+                 user->email, user->city);
+}
+
+// Function to log the acknowledgment and user info
+void log_acknowledgment(User *user, const char *ack, FILE *log_file) {
+    fprintf(log_file, "User ID: %d, Name: %s %s, Email: %s, City: %s - Server Response: %s\n",
+           user->user_id, user->first_name, user->last_name, user->email, user->city, ack);
+    fflush(log_file);
 }
 
 int main(int argc, char *argv[]) {
@@ -111,7 +74,7 @@ int main(int argc, char *argv[]) {
     }
 
     printf("Connected to server at %s:%d\n", SERVER_IP, SERVER_PORT);
-    
+
     // Read CSV file line by line
     char line[MAX_LINE_LENGTH];
     // Skip header if present
@@ -166,8 +129,9 @@ int main(int argc, char *argv[]) {
         // Null-terminate the acknowledgment
         ack[bytes_received] = '\0';
         printf("Received acknowledgment: %s\n", ack);
-        
-        // Log functionality will be added in a future commit
+
+        // Log the acknowledgment
+        log_acknowledgment(&user, ack, log_file);
 
         // Small delay between requests
         usleep(100000);  // 100ms delay
@@ -178,6 +142,6 @@ int main(int argc, char *argv[]) {
     fclose(csv_file);
     fclose(log_file);
     printf("Client execution completed\n");
-    
+
     return 0;
 }
